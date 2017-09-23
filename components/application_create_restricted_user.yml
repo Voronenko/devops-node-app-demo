@@ -1,0 +1,7 @@
+---
+  - name: Create restricted user {{project_user}}
+    user: name="{{project_user}}" shell="/bin/false"
+    when: options_create_app_user
+    become: yes
+    tags:
+      - скуфеу

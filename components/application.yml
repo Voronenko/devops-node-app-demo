@@ -1,0 +1,145 @@
+---
+  - include: __detect_node_path.yml deploy_user="{{project_user}}"
+    tags:
+      - update
+      - create
+
+  - name: Project App | Dump mounts
+    command: /bin/mount
+    register: machine_mounts
+    tags:
+      - create
+      - update
+
+  - name: Project App | Create directory
+    action: file dest={{project_directory}} owner={{project_user}} group={{project_user}} mode=755 state=directory
+    when: "'{{project_directory}}' not in machine_mounts.stdout"
+    become: yes
+    with_items:
+      - "{{project_directory}}"
+    tags:
+      - create
+      - update
+
+  - block:
+
+    - name:  Project APP | clone application, if distribution is based on repository
+      git: repo="{{project_repo}}" update="yes" dest="{{project_directory}}"
+      become: yes
+      become_user: "{{project_user}}"
+
+
+    - name: Install npm dependencies
+      shell: npm install
+      args:
+         chdir: "{{project_directory}}"
+      become: "yes"
+      become_user: "{{project_user}}"
+      environment:
+        PATH: "{{npm_path_detected}}:{{ ansible_env.PATH }}"       # can be different depending on nvm version
+      tags:
+        - create
+        - update
+
+    when:  project_repo is defined
+
+
+  - block:
+
+    - name: Project App | Deploy application pack
+      copy: src="{{item}}" dest="{{project_directory_base}}" owner="root" group="{{project_user}}" mode="u=rw,g=r,o=r"
+      with_items:
+        - "{{root_dir}}/../{{artifact_name}}"
+      become: yes
+      tags:
+        - create
+        - update
+
+    - name: Project App | Deploy unpack logic, if any
+      unarchive: src="{{project_directory_base}}/{{artifact_name}}"  dest="{{project_directory}}" remote_src="yes" owner="root" group="{{project_user}}"
+      become: yes
+      tags:
+        - create
+        - update
+
+    when:  project_repo is not defined and artifact_name is defined
+
+  - name: Project App | Create log dir
+    file: dest={{log_file_path}} owner={{project_user}} group={{project_user}} mode=755 state=directory
+    become: yes
+    tags:
+      - create
+      - update
+
+  # - name: Project App | Install node modules
+  #   shell: npm update
+  #   args:
+  #     chdir: "{{project_directory}}"
+  #   environment:
+  #     PATH: "{{npm_path_detected}}:{{ ansible_env.PATH }}"
+  #   tags:
+  #     - api
+  #     - update
+
+  - name: Project App |Copy upstart script
+    template: src="{{root_dir}}/templates/api/upstart.conf.j2" dest=/etc/init/{{project_upstart_name}}.conf
+    when: ansible_service_mgr == "upstart"
+    become: yes
+    tags:
+      - api
+      - update
+
+  - name: Project App |Copy systemd script
+    template: src="{{root_dir}}/templates/api/systemd.service.j2" dest=/etc/systemd/system/{{project_upstart_name}}.service
+    when: ansible_service_mgr == "systemd"
+    become: yes
+    tags:
+      - api
+      - update
+
+  - name: Project App |Create pid dir
+    file: path="/var/run/{{project_upstart_name}}" state="directory" owner="{{project_user}}" group="root"
+    become: yes
+    tags:
+      - api
+      - update
+
+  - name: Project App |Restart
+    service: name={{project_upstart_name}} state="restarted" enabled="yes"
+    become: yes
+    tags:
+      - api
+      - update
+
+  - name: Project App |Configure monit api monitoring
+    template: src={{root_dir}}/templates/monit/monit.conf.j2 dest=/etc/monit/conf.d/{{item.project_upstart_name}}.conf
+    become: yes
+    tags:
+      - api
+      - update
+    with_items:
+      - {
+          project_upstart_name: "{{project_upstart_name}}",
+          port_number: "{{project_node_port}}"
+        }
+
+
+  - name: Project App | Copy Nginx configuration
+    template: "src={{root_dir}}/templates/nginx/nginx.conf.j2 dest=/etc/nginx/sites-available/{{project_domain | default(project_upstart_name)}}"
+    become: yes
+    tags:
+      - api
+      - update
+
+  - name: Project App | Enable website
+    command: ln -fs /etc/nginx/sites-available/{{project_domain | default(project_upstart_name)}} /etc/nginx/sites-enabled/{{project_domain | default(project_upstart_name)}}
+    become: yes
+    tags:
+      - client
+
+  - name: Project App | Restart Nginx
+    service: name="nginx" state="restarted"
+    become: yes
+    tags:
+      - api
+      - update

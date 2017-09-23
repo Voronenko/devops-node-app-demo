@@ -1,0 +1,143 @@
+server {
+  listen 80 {% if project_domain is not defined  %} default_server {% endif %};
+{% if project_domain is defined  %}
+  server_name  {{project_domain}};
+{% endif %}
+
+
+  charset utf-8;
+
+  # This will route all requests for /css/style.20120716.css to /css/style.css
+  location ~* (.+)\.(?:[\d\w$]+)\.(js|css|png|jpg|jpeg|gif)$ {
+    try_files $uri $1.$2;
+  }
+
+  set $host_path "{{project_directory}}";
+  root $host_path/public;
+
+  proxy_intercept_errors on;
+
+
+  # opt-in to the future
+  add_header "X-UA-Compatible" "IE=Edge,chrome=1";
+
+  location / {
+    try_files $uri @backend;
+  }
+
+  location @backend {
+    proxy_pass http://127.0.0.1:{{project_node_port}};
+    proxy_redirect off;
+    proxy_set_header Host $host;
+  }
+
+  location /socket.io/ {
+    proxy_pass http://127.0.0.1:{{project_node_port}};
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade $http_upgrade;
+    proxy_set_header Connection "upgrade";
+  }
+
+
+  location /monit {
+    proxy_pass http://127.0.0.1:2812;
+    proxy_set_header Host $host;
+    rewrite ^/monit/(.*) /$1 break;
+    proxy_ignore_client_abort on;
+  }
+
+
+  # Expire rules for static content
+  # ===============================
+
+  # No default expire rule. This config mirrors that of apache as outlined in the
+  # html5-boilerplate .htaccess file. However, nginx applies rules by location,
+  # the apache rules are defined by type. A consequence of this difference is that
+  # if you use no file extension in the url and serve html, with apache you get an
+  # expire time of 0s, with nginx you'd get an expire header of one month in the
+  # future (if the default expire rule is 1 month). Therefore, do not use a
+  # default expire rule with nginx unless your site is completely static
+
+  # cache.appcache, your document html and data
+  location ~* \.(?:manifest|appcache|html?|xml|json)$ {
+    expires -1;
+    access_log off;
+  }
+
+  # Feed
+  location ~* \.(?:rss|atom)$ {
+    expires 1h;
+    add_header Cache-Control "public";
+  }
+
+  # Media: images, icons, video, audio, HTC
+  location ~* \.(?:jpg|jpeg|gif|png|ico|cur|gz|svg|svgz|mp4|ogg|ogv|webm|htc)$ {
+    expires 1M;
+    access_log off;
+    add_header Cache-Control "public";
+    error_page 404 = @tomcat;
+  }
+
+  # CSS and Javascript
+  location ~* \.(?:css|js)$ {
+    expires 1y;
+    access_log off;
+    add_header Cache-Control "public";
+    error_page 404 = @tomcat;
+  }
+
+  # Cross domain webfont access
+  # ===========================
+
+  location ~* \.(?:ttf|ttc|otf|eot|woff|woff2)$ {
+    add_header "Access-Control-Allow-Origin" "*";
+
+    # Also, set cache rules for webfonts.
+    #
+    # See http://wiki.nginx.org/HttpCoreModule#location
+    # And https://github.com/h5bp/server-configs/issues/85
+    # And https://github.com/h5bp/server-configs/issues/86
+    expires 1M;
+    access_log off;
+    add_header Cache-Control "public";
+  }
+
+  # Compression
+  # ===========
+
+  # Enable Gzip compressed.
+  gzip on;
+
+  # Enable compression both for HTTP/1.0 and HTTP/1.1 (required for CloudFront).
+  gzip_http_version 1.0;
+
+  # Compression level (1-9).
+  # 5 is a perfect compromise between size and cpu usage, offering about
+  # 75% reduction for most ascii files (almost identical to level 9).
+  gzip_comp_level 5;
+
+  # Don't compress anything that's already small and unlikely to shrink much
+  # if at all (the default is 20 bytes, which is bad as that usually leads to
+  # larger files after gzipping).
+  gzip_min_length 256;
+
+  # Compress data even for clients that are connecting to us via proxies,
+  # identified by the "Via" header (required for CloudFront).
+  gzip_proxied any;
+
+  # Tell proxies to cache both the gzipped and regular version of a resource
+  # whenever the client's Accept-Encoding capabilities header varies;
+  # Avoids the issue where a non-gzip capable client (which is extremely rare
+  # today) would display gibberish if their proxy gave them the gzipped version.
+  gzip_vary on;
+
+  # Compress all output labeled with one of the following MIME-types.
+  gzip_types *;
+  # text/html is always compressed by HttpGzipModule
+
+  # This should be turned on if you are going to have pre-compressed copies (.gz) of
+  # static files available. If not it should be left off as it will cause extra I/O
+  # for the check. It is best if you enable this in a location{} block for
+  # a specific directory, or on an individual server{} level.
+  # gzip_static on;
+}

@@ -1,0 +1,13 @@
+description "Your App"
+
+start on runlevel [2345]
+stop on runlevel [016]
+
+respawn
+console log
+setuid {{project_app_user}}
+setgid {{project_app_user}}
+
+env HOME={{project_directory}}
+
+exec start-stop-daemon --chdir ${HOME} --start --make-pidfile --pid=/var/run/{{project_upstart_name}}/{{project_upstart_name}}.pid --exec {{npm_path_detected}}/node -- bin/www {{extra_project_params}}

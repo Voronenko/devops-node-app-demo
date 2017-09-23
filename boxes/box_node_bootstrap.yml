@@ -1,0 +1,89 @@
+---
+- hosts: currenthost
+  gather_facts: False
+
+  vars:
+    - root_dir: "{{ playbook_dir }}/../"
+    - shared_dir: "{{ playbook_dir }}/../"
+
+    - box_deploy_user: jenkins
+      box_deploy_authorized_keys:
+        - "{{shared_dir}}/files/ssh_keys/vyacheslav.pub"
+
+  vars_files:
+    - common_vars.yml
+
+  pre_tasks:
+    - debug: msg="Pre tasks section for {{ansible_host}}"
+
+    - set_fact:
+        remote_ip_address: "{{ ansible_host }}"
+
+    - name: Check host name present in known_hosts
+      local_action: raw {{root_dir}}/scan_server.sh {{remote_ip_address}}
+      args:
+        executable: /bin/bash
+      ignore_errors: true
+
+    - name: ANSIBLE PYTHON | install python 2
+      raw: test -e /usr/bin/python || (apt -qqy update && apt install -qy python-minimal)
+      become: yes
+
+    - name:  UNPRIVILEGED USERS | Get acl dependency (ansible unprivileged user operations magic)
+      apt: pkg="acl"
+      become: yes
+
+    - name: gather facts
+      setup:
+
+
+  roles:
+    - {
+        role: "sa-box-bootstrap",
+        deploy_user: "{{box_deploy_user}}",
+#        deploy_user_key: "{{playbook_dir}}/files/ssh_keys/deploy_rsa",
+#        deploy_user_pub_key: "{{playbook_dir}}/files/ssh_keys/deploy_rsa.pub",
+        deploy_user_authorized_keys: "{{box_deploy_authorized_keys}}",
+#        ufw_rules_allow: "{{project_ufw_rules_allow}}",
+#        ufw_rules_allow_from_hosts: "{{box_ufw_rules_allow_from_hosts}}",
+
+        hostname: "{{ box_hostname | default( ansible_hostname) }}",
+        timezone: "Europe/Kiev",
+
+        option_copy_initial_authorized_keys: true,
+        option_enforce_ssh_keys_login: true,
+        option_file2ban: false,
+        option_ufw: true,
+        option_monit: false,
+      }
+    - {
+        role: "sa-nginx",
+        tags: "create"
+
+      }
+    - {
+        role: "sa-monit",
+        monit_presets: ["basic", "basic_nginx"],
+        monit_gui_password: monit,
+        monit_version: "5.19.0-1", # for ubuntu 16.04
+        tags: "create"
+      }
+    - {
+         role: "sa-include",
+         include_file: "{{root_dir}}/components/application_create_restricted_user.yml",
+         tags: "create"
+      }
+    - {
+         role: "sa-node-nvm",
+         nvm_version: "0.31.2",
+         nodejs_version: "{{project_node_version}}",
+         deploy_user: "{{project_user}}",
+         option_nodejs_install_with_nvm: true,
+         tags: "create"
+      }
+
+
+
+  tasks:
+
+    - debug: msg="Tasks section"

@@ -1,0 +1,20 @@
+---
+
+options_create_app_user: true
+
+project_directory_base: "/home/{{project_user}}"
+project_directory: "{{project_directory_base}}/project"
+project_user: "projectuser"
+project_repo: "https://github.com/voronenko-p/node-sample.git"
+
+# project_domain: project.demo.test
+
+extra_project_params: ""
+project_node_port: 3000
+project_upstart_name: project
+
+project_node_version: "6.9.2"
+
+
+log_file_path: "{{project_directory_base}}/log"
+log_file_name: project.log

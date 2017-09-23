@@ -1,0 +1,30 @@
+# CI/CD managed
+# Do NOT modify this file by hand!
+
+[Unit]
+Description=CD Node
+After=network.target
+Requires=network.target
+
+[Service]
+Environment=HOME={{project_directory}}
+Environment=PATH={{npm_path_detected}}:/usr/local/sbin:/usr/local/bin:/usr/bin:/usr/sbin:/sbin:/bin:$PATH
+Environment=NODE_BIN={{npm_path_detected}}/node
+ExecStart={{npm_path_detected}}/node -- bin/www {{extra_project_params}}
+
+StandardOutput=syslog
+StandardError=syslog
+SyslogIdentifier={{project_upstart_name}}
+
+WorkingDirectory={{project_directory}}
+PIDFile=/var/run/yourapp/{{project_upstart_name}}.pid
+
+User={{project_user}}
+Group={{project_user}}
+
+Restart=always
+RestartSec=5
+TimeoutSec=5
+
+[Install]
+WantedBy=multi-user.target
